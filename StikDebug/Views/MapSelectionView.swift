@@ -47,6 +47,68 @@ private enum RouteSimulationDefaults {
     static let importedRouteFallbackSpeedMetersPerSecond: CLLocationSpeed = 13.4
 }
 
+private enum RouteTravelMode: String, CaseIterable, Identifiable {
+    case drive
+    case walk
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .drive: return "Drive"
+        case .walk: return "Walk"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .drive: return "car.fill"
+        case .walk: return "figure.walk"
+        }
+    }
+
+    var transportType: MKDirectionsTransportType {
+        switch self {
+        case .drive: return .automobile
+        case .walk: return .walking
+        }
+    }
+}
+
+private enum WalkingPace: String, CaseIterable, Identifiable {
+    case stroll
+    case walk
+    case jog
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .stroll: return "Stroll"
+        case .walk: return "Walk"
+        case .jog: return "Jog"
+        }
+    }
+
+    var metersPerSecond: CLLocationSpeed {
+        switch self {
+        case .stroll: return 1.1
+        case .walk: return 1.4
+        case .jog: return 2.6
+        }
+    }
+
+    var subtitle: String {
+        let kmh = metersPerSecond * 3.6
+        return String(format: "%.1f km/h", kmh)
+    }
+}
+
+private struct ImportedRoute {
+    let coordinates: [CLLocationCoordinate2D]
+    let sourceName: String
+}
+
 private struct RoutePlaybackSample {
     let coordinate: CLLocationCoordinate2D
     let delayFromPrevious: TimeInterval
@@ -348,6 +410,28 @@ private func prefetchRoutePlaybackSamples(
         speedWays: speedWays,
         fallbackSpeedMetersPerSecond: fallbackSpeedMetersPerSecond
     )
+}
+
+/// Walking uses a constant pace; driving follows OpenStreetMap speed limits.
+private func makeRoutePlaybackSamples(
+    displayCoordinates: [CLLocationCoordinate2D],
+    travelMode: RouteTravelMode,
+    walkingPace: WalkingPace,
+    fallbackDriveSpeedMetersPerSecond: CLLocationSpeed
+) async -> [RoutePlaybackSample] {
+    switch travelMode {
+    case .walk:
+        return buildPlaybackSamples(
+            from: displayCoordinates,
+            speedWays: [],
+            fallbackSpeedMetersPerSecond: walkingPace.metersPerSecond
+        )
+    case .drive:
+        return await prefetchRoutePlaybackSamples(
+            displayCoordinates: displayCoordinates,
+            fallbackSpeedMetersPerSecond: fallbackDriveSpeedMetersPerSecond
+        )
+    }
 }
 
 private enum CoordinateImportError: LocalizedError {
@@ -752,6 +836,11 @@ struct LocationSimulationView: View {
     @State private var routePlaybackCoordinate: CLLocationCoordinate2D?
     @State private var simulatedCoordinate: CLLocationCoordinate2D?
     @State private var routeRequestID = UUID()
+    @State private var importedRoute: ImportedRoute?
+    @State private var routePlaybackIndex = 0
+    @State private var isRoutePaused = false
+    @AppStorage("routeTravelMode") private var travelMode: RouteTravelMode = .walk
+    @AppStorage("routeWalkingPace") private var walkingPace: WalkingPace = .walk
 
     private static let routeDurationFormatter: DateComponentsFormatter = {
         let formatter = DateComponentsFormatter()
@@ -792,7 +881,7 @@ struct LocationSimulationView: View {
     }
 
     private var isRouteRunning: Bool {
-        routePlaybackTask != nil
+        routePlaybackTask != nil || isRoutePaused
     }
 
     private var hasRouteContext: Bool {
@@ -822,13 +911,19 @@ struct LocationSimulationView: View {
             return "Calculating route…"
         }
         if isPrefetchingRouteSpeeds {
-            return "Prefetching road speeds…"
+            return travelMode == .drive ? "Prefetching road speeds…" : "Preparing walk…"
+        }
+        if isRoutePaused {
+            return "Paused."
+        }
+        if routePlaybackTask != nil {
+            return travelMode == .walk ? "Walking…" : "Driving…"
         }
         if routePlan != nil {
             return "Route ready."
         }
         if routeStartSelection != nil || routeEndSelection != nil {
-            return "Pick both route endpoints to build the drive."
+            return "Pick both route endpoints to build the route."
         }
         return "Plan a route from the toolbar."
     }
@@ -1011,6 +1106,7 @@ struct LocationSimulationView: View {
                 initialStart: routeStartSelection,
                 initialEnd: routeEndSelection
             ) { startSelection, endSelection in
+                importedRoute = nil
                 routeStartSelection = startSelection
                 routeEndSelection = endSelection
                 refreshRoute()
@@ -1176,7 +1272,12 @@ struct LocationSimulationView: View {
         }
 
         let distance = distanceAlong(displayCoordinates)
-        let fallbackSpeed = RouteSimulationDefaults.importedRouteFallbackSpeedMetersPerSecond
+        let mode = travelMode
+        let pace = walkingPace
+        let fallbackSpeed = mode == .walk
+            ? pace.metersPerSecond
+            : RouteSimulationDefaults.importedRouteFallbackSpeedMetersPerSecond
+        importedRoute = ImportedRoute(coordinates: coordinates, sourceName: sourceName)
         routeStartSelection = RouteSearchSelection(title: "\(sourceName) Start", coordinate: firstCoordinate)
         routeEndSelection = RouteSearchSelection(title: "\(sourceName) End", coordinate: lastCoordinate)
         setRoutePlan(RouteSimulationPlan(
@@ -1193,9 +1294,11 @@ struct LocationSimulationView: View {
         routeRequestID = requestID
         isPrefetchingRouteSpeeds = true
         routeSpeedPrefetchTask = Task.detached(priority: .utility) {
-            let playbackSamples = await prefetchRoutePlaybackSamples(
+            let playbackSamples = await makeRoutePlaybackSamples(
                 displayCoordinates: displayCoordinates,
-                fallbackSpeedMetersPerSecond: fallbackSpeed
+                travelMode: mode,
+                walkingPace: pace,
+                fallbackDriveSpeedMetersPerSecond: fallbackSpeed
             )
             guard !Task.isCancelled else { return }
             await MainActor.run {
@@ -1260,7 +1363,11 @@ struct LocationSimulationView: View {
                     .foregroundStyle(.secondary)
             }
 
-            routeAttributionLink
+            travelModeControls
+
+            if travelMode == .drive {
+                routeAttributionLink
+            }
 
             HStack(spacing: 12) {
                 Button("Stop", action: clear)
@@ -1268,22 +1375,60 @@ struct LocationSimulationView: View {
                     .tint(.red)
                     .disabled(!pairingExists || isBusy || !hasActiveSimulation)
 
-                Button("Play Route", action: simulateRoute)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        !pairingExists ||
-                        isBusy ||
-                        isLoadingRoute ||
-                        isPrefetchingRouteSpeeds ||
-                        routePlan == nil ||
-                        routePlaybackSamples.isEmpty
-                    )
+                if routePlaybackTask != nil {
+                    Button("Pause", action: pauseRoute)
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                } else if isRoutePaused {
+                    Button("Resume", action: resumeRoute)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!pairingExists || isBusy)
+                } else {
+                    Button("Play Route", action: simulateRoute)
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            !pairingExists ||
+                            isBusy ||
+                            isLoadingRoute ||
+                            isPrefetchingRouteSpeeds ||
+                            routePlan == nil ||
+                            routePlaybackSamples.isEmpty
+                        )
+                }
 
                 Button("Reset", action: resetRouteSelection)
                     .buttonStyle(.bordered)
                     .disabled(isBusy || isRouteRunning)
             }
         }
+    }
+
+    private var travelModeControls: some View {
+        HStack(spacing: 12) {
+            Picker("Travel Mode", selection: $travelMode) {
+                ForEach(RouteTravelMode.allCases) { mode in
+                    Label(mode.title, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            if travelMode == .walk {
+                Menu {
+                    Picker("Pace", selection: $walkingPace) {
+                        ForEach(WalkingPace.allCases) { pace in
+                            Text("\(pace.title) (\(pace.subtitle))").tag(pace)
+                        }
+                    }
+                } label: {
+                    Label(walkingPace.title, systemImage: "speedometer")
+                        .font(.footnote)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .disabled(isBusy || isRouteRunning || isLoadingRoute)
+        .onChange(of: travelMode) { _, _ in rebuildRoute() }
+        .onChange(of: walkingPace) { _, _ in rebuildRoute() }
     }
 
     private func simulate() {
@@ -1322,7 +1467,7 @@ struct LocationSimulationView: View {
             BackgroundLocationManager.shared.requestStart()
             simulatedCoordinate = nil
             routePlaybackCoordinate = firstCoordinate
-            startRoutePlayback()
+            startRoutePlayback(from: 0)
         }
     }
 
@@ -1397,6 +1542,8 @@ struct LocationSimulationView: View {
     private func cancelRoutePlayback(resetMarker: Bool) {
         routePlaybackTask?.cancel()
         routePlaybackTask = nil
+        routePlaybackIndex = 0
+        isRoutePaused = false
         if resetMarker {
             routePlaybackCoordinate = nil
         }
@@ -1419,10 +1566,23 @@ struct LocationSimulationView: View {
         setRoutePlan(nil)
         routeStartSelection = nil
         routeEndSelection = nil
+        importedRoute = nil
         routePlaybackSamples = []
         routePlaybackCoordinate = nil
+        routePlaybackIndex = 0
+        isRoutePaused = false
         isLoadingRoute = false
         isPrefetchingRouteSpeeds = false
+    }
+
+    /// Rebuilds the current route after the travel mode or walking pace changes.
+    private func rebuildRoute() {
+        guard !isRouteRunning else { return }
+        if let importedRoute {
+            applyImportedCoordinates(importedRoute.coordinates, sourceName: importedRoute.sourceName)
+        } else if routeStartSelection != nil, routeEndSelection != nil {
+            refreshRoute()
+        }
     }
 
     private func refreshRoute() {
@@ -1443,11 +1603,13 @@ struct LocationSimulationView: View {
         isLoadingRoute = true
         isPrefetchingRouteSpeeds = false
 
+        let mode = travelMode
+        let pace = walkingPace
         let request = MKDirections.Request()
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: routeStart))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: routeEnd))
         request.requestsAlternateRoutes = false
-        request.transportType = .automobile
+        request.transportType = travelMode.transportType
 
         routeLoadTask = Task {
             do {
@@ -1457,7 +1619,7 @@ struct LocationSimulationView: View {
                     throw NSError(
                         domain: "RouteSimulation",
                         code: -1,
-                        userInfo: [NSLocalizedDescriptionKey: "No drivable route was returned."]
+                        userInfo: [NSLocalizedDescriptionKey: mode == .walk ? "No walking route was returned." : "No drivable route was returned."]
                     )
                 }
 
@@ -1468,7 +1630,9 @@ struct LocationSimulationView: View {
                 let routePlan = RouteSimulationPlan(
                     displayCoordinates: displayCoordinates,
                     distance: route.distance,
-                    expectedTravelTime: route.expectedTravelTime
+                    expectedTravelTime: mode == .walk
+                        ? route.distance / pace.metersPerSecond
+                        : route.expectedTravelTime
                 )
 
                 await MainActor.run {
@@ -1489,9 +1653,11 @@ struct LocationSimulationView: View {
                     guard routeRequestID == requestID else { return }
                     routeSpeedPrefetchTask?.cancel()
                     routeSpeedPrefetchTask = Task.detached(priority: .utility) {
-                        let playbackSamples = await prefetchRoutePlaybackSamples(
+                        let playbackSamples = await makeRoutePlaybackSamples(
                             displayCoordinates: displayCoordinates,
-                            fallbackSpeedMetersPerSecond: fallbackSpeed
+                            travelMode: mode,
+                            walkingPace: pace,
+                            fallbackDriveSpeedMetersPerSecond: fallbackSpeed
                         )
                         guard !Task.isCancelled else { return }
                         await MainActor.run {
@@ -1520,16 +1686,21 @@ struct LocationSimulationView: View {
         }
     }
 
-    private func startRoutePlayback() {
-        routePlaybackTask = Task {
-            var lastSuccessfulCoordinate = routePlaybackSamples.first?.coordinate
+    private func startRoutePlayback(from startIndex: Int) {
+        let samples = routePlaybackSamples
+        guard samples.indices.contains(startIndex) else { return }
 
-            for sample in routePlaybackSamples.dropFirst() {
+        routePlaybackTask = Task {
+            var lastSuccessfulCoordinate: CLLocationCoordinate2D? = samples[startIndex].coordinate
+
+            for index in samples.indices.dropFirst(startIndex + 1) {
+                let sample = samples[index]
                 try? await Task.sleep(for: .seconds(sample.delayFromPrevious))
                 guard !Task.isCancelled else { return }
 
                 let code = await sendLocationUpdate(for: sample.coordinate)
                 guard code == 0 else {
+                    guard !Task.isCancelled else { return }
                     await MainActor.run {
                         routePlaybackTask = nil
                         routePlaybackCoordinate = lastSuccessfulCoordinate
@@ -1546,17 +1717,38 @@ struct LocationSimulationView: View {
                 lastSuccessfulCoordinate = sample.coordinate
                 await MainActor.run {
                     routePlaybackCoordinate = sample.coordinate
+                    routePlaybackIndex = index
                 }
             }
 
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 routePlaybackTask = nil
+                routePlaybackIndex = 0
                 if let lastSuccessfulCoordinate {
                     routePlaybackCoordinate = lastSuccessfulCoordinate
                     startResendLoop(with: lastSuccessfulCoordinate)
                 }
             }
         }
+    }
+
+    /// Stops moving but keeps holding the current position until resumed.
+    private func pauseRoute() {
+        guard let routePlaybackTask else { return }
+        routePlaybackTask.cancel()
+        self.routePlaybackTask = nil
+        isRoutePaused = true
+        if let routePlaybackCoordinate {
+            startResendLoop(with: routePlaybackCoordinate)
+        }
+    }
+
+    private func resumeRoute() {
+        guard isRoutePaused, pairingExists, !isBusy else { return }
+        stopResendLoop()
+        isRoutePaused = false
+        startRoutePlayback(from: routePlaybackIndex)
     }
 
     private func sendLocationUpdate(for coordinate: CLLocationCoordinate2D) async -> Int32 {
