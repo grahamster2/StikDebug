@@ -37,34 +37,6 @@ enum LoopMode: String, CaseIterable, Identifiable {
     }
 }
 
-enum SpeedPreset: Double, CaseIterable, Identifiable {
-    case stroll = 3.5
-    case walk = 5
-    case brisk = 6.5
-    case jog = 9
-    case cycle = 16
-
-    var id: Double { rawValue }
-
-    var title: String {
-        switch self {
-        case .stroll: return "Stroll"
-        case .walk: return "Walk"
-        case .brisk: return "Brisk"
-        case .jog: return "Jog"
-        case .cycle: return "Cycle"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .stroll, .walk, .brisk: return "figure.walk"
-        case .jog: return "figure.run"
-        case .cycle: return "bicycle"
-        }
-    }
-}
-
 /// What gets written to disk so an interrupted session can be resumed.
 struct SavedSession: Codable {
     enum Kind: String, Codable {
@@ -138,8 +110,7 @@ final class SimulationEngine: ObservableObject {
     }
 
     static var speedMetersPerSecond: CLLocationSpeed {
-        let kmh = UserDefaults.standard.double(forKey: UserDefaults.Keys.walkingSpeedKmh)
-        return max(kmh, 0.5) / 3.6
+        TravelMode.current.speedMetersPerSecond
     }
 
     static func travelTime(for distance: CLLocationDistance) -> TimeInterval {

@@ -188,7 +188,7 @@ struct MapScreen: View {
 
         if planner.mode == .walk {
             if engine.currentPoint == nil, let start = planner.walkStart {
-                Marker("Start", systemImage: "figure.walk", coordinate: start.point.coordinate)
+                Marker("Start", systemImage: "circle.fill", coordinate: start.point.coordinate)
                     .tint(.green)
             }
             if let destination = planner.destination {
@@ -438,7 +438,7 @@ struct WalkerDot: View {
 
     private var icon: String {
         switch phase {
-        case .walking: return "figure.walk"
+        case .walking: return TravelMode.current.systemImage
         case .paused: return "pause.fill"
         default: return "location.fill"
         }

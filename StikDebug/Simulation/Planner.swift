@@ -19,7 +19,7 @@ enum PlanMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .pin: return "Jump"
-        case .walk: return "Walk"
+        case .walk: return "Route"
         case .draw: return "Draw"
         }
     }
@@ -27,7 +27,7 @@ enum PlanMode: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .pin: return "mappin"
-        case .walk: return "figure.walk"
+        case .walk: return "arrow.triangle.turn.up.right.diamond"
         case .draw: return "scribble.variable"
         }
     }
@@ -73,12 +73,12 @@ final class Planner: ObservableObject {
             return pin == nil ? "Tap the map or search to drop a pin." : "Tap Jump Here to move there instantly."
         case .walk:
             if engine.isMoving {
-                return "Tap the map to change where you're walking."
+                return "Tap the map to change where you're going."
             }
             if needsStartPoint {
                 return "Tap the map to choose where to start."
             }
-            return destination == nil ? "Tap the map or search for a destination." : "Ready to walk."
+            return destination == nil ? "Tap the map or search for a destination." : "Ready to go."
         case .draw:
             if waypoints.isEmpty {
                 return engine.currentPoint == nil
@@ -168,6 +168,7 @@ final class Planner: ObservableObject {
         preview = nil
 
         let loop = LoopMode.current
+        let travel = TravelMode.current
         let followPaths = UserDefaults.standard.bool(forKey: UserDefaults.Keys.followPaths)
 
         let request: (() async throws -> WalkRoute)?
@@ -176,14 +177,14 @@ final class Planner: ObservableObject {
             request = nil
         case .walk:
             if let start = effectiveStart, let end = destination?.point {
-                request = { try await RoutePlanner.walkingRoute(from: start, to: end) }
+                request = { try await RoutePlanner.directions(from: start, to: end, mode: travel) }
             } else {
                 request = nil
             }
         case .draw:
             if waypoints.count >= 2 {
                 let points = waypoints
-                request = { try await RoutePlanner.route(through: points, followPaths: followPaths) }
+                request = { try await RoutePlanner.route(through: points, followPaths: followPaths, mode: travel) }
             } else {
                 request = nil
             }
@@ -203,7 +204,7 @@ final class Planner: ObservableObject {
                 if loop == .loop, route.start.distance(to: route.end) > 25 {
                     let back: WalkRoute
                     if followPaths || self?.mode == .walk {
-                        back = try await RoutePlanner.walkingRoute(from: route.end, to: route.start)
+                        back = try await RoutePlanner.directions(from: route.end, to: route.start, mode: travel)
                     } else {
                         back = WalkRoute(points: [route.end, route.start])!
                     }
@@ -212,6 +213,7 @@ final class Planner: ObservableObject {
                 guard !Task.isCancelled, let self else { return }
                 self.preview = route
                 self.isPlanning = false
+                self.applySpeedEstimate(route, travel: travel)
             } catch is CancellationError {
                 return
             } catch {
@@ -220,6 +222,17 @@ final class Planner: ObservableObject {
                 self.planError = error.localizedDescription
             }
         }
+    }
+
+    /// Driving routes start at Apple Maps' average speed for that route
+    /// (slower in town, faster on highways). The slider can still override it.
+    private func applySpeedEstimate(_ route: WalkRoute, travel: TravelMode) {
+        guard travel == .drive,
+              UserDefaults.standard.bool(forKey: UserDefaults.Keys.useRouteSpeedEstimate),
+              let speed = route.estimatedSpeed, speed > 0 else { return }
+        let kmh = (speed * 3.6).rounded()
+        let clamped = min(max(kmh, travel.speedRange.lowerBound), travel.speedRange.upperBound)
+        UserDefaults.standard.set(clamped, forKey: travel.speedKey)
     }
 
     private func modeChanged() {

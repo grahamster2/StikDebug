@@ -17,6 +17,9 @@ struct ControlPanel: View {
     let saveFavourite: (GeoPoint) -> Void
 
     @AppStorage(UserDefaults.Keys.followPaths) private var followPaths = true
+    @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
+
+    private var travel: TravelMode { TravelMode(rawValue: travelRaw) ?? .walk }
     @State private var showEndOptions = false
 
     var body: some View {
@@ -175,7 +178,7 @@ struct ControlPanel: View {
 
         routeSettings
 
-        primaryButton("Start Walk", systemImage: "figure.walk", disabled: !canStartWalk) {
+        primaryButton("Start \(travel.activeTitle)", systemImage: travel.systemImage, disabled: !canStartWalk) {
             startPreviewWalk()
         }
     }
@@ -207,20 +210,21 @@ struct ControlPanel: View {
         .controlSize(.small)
 
         Toggle(isOn: $followPaths) {
-            Label("Follow streets and paths", systemImage: "road.lanes")
+            Label(travel == .drive ? "Follow roads" : "Follow streets and paths", systemImage: "road.lanes")
                 .font(.subheadline)
         }
         .onChange(of: followPaths) { _, _ in planner.rebuild() }
 
         routeSettings
 
-        primaryButton("Start Walk", systemImage: "figure.walk", disabled: !canStartWalk) {
+        primaryButton("Start \(travel.activeTitle)", systemImage: travel.systemImage, disabled: !canStartWalk) {
             startPreviewWalk()
         }
     }
 
     private var routeSettings: some View {
         VStack(spacing: 10) {
+            TravelModePicker { planner.rebuild() }
             if planner.isPlanning {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
@@ -242,7 +246,7 @@ struct ControlPanel: View {
     private var activeWalk: some View {
         VStack(spacing: 12) {
             HStack {
-                Label(engine.phase == .paused ? "Paused" : "Walking", systemImage: engine.phase == .paused ? "pause.circle.fill" : "figure.walk.motion")
+                Label(engine.phase == .paused ? "Paused" : travel.activeTitle, systemImage: engine.phase == .paused ? "pause.circle.fill" : travel.systemImage)
                     .font(.headline)
                     .foregroundStyle(engine.phase == .paused ? .orange : .blue)
                 Spacer()
@@ -268,13 +272,14 @@ struct ControlPanel: View {
                 statColumn("Time left", Self.format(duration: SimulationEngine.travelTime(for: engine.remainingDistance)))
             }
 
+            TravelModePicker(onChange: nil)
             SpeedControl()
             LoopPicker(onChange: nil)
 
             if planner.mode == .walk, planner.destination != nil, planner.isPlanning || planner.preview != nil {
                 redirectRow
             } else {
-                Text("Tap the map to change where you're walking.")
+                Text("Tap the map to change where you're going.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -467,9 +472,14 @@ private struct ProminenceModifier: ViewModifier {
 
 struct RouteSummary: View {
     let distance: CLLocationDistance
-    @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var speedKmh = 5.0
+    // Observed so the time updates when the speed or mode changes.
+    @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
+    @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var walkingSpeed = TravelMode.walk.defaultSpeedKmh
+    @AppStorage(UserDefaults.Keys.cyclingSpeedKmh) private var cyclingSpeed = TravelMode.cycle.defaultSpeedKmh
+    @AppStorage(UserDefaults.Keys.drivingSpeedKmh) private var drivingSpeed = TravelMode.drive.defaultSpeedKmh
 
     var body: some View {
+        let travel = TravelMode(rawValue: travelRaw) ?? .walk
         HStack {
             Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
                 .foregroundStyle(.purple)
@@ -477,7 +487,7 @@ struct RouteSummary: View {
                 .font(.subheadline.weight(.semibold))
             Text("·")
                 .foregroundStyle(.secondary)
-            Text(ControlPanel.format(duration: distance / (max(speedKmh, 0.5) / 3.6)))
+            Text(ControlPanel.format(duration: distance / travel.speedMetersPerSecond))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -485,46 +495,72 @@ struct RouteSummary: View {
     }
 }
 
+struct TravelModePicker: View {
+    @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
+    let onChange: (() -> Void)?
+
+    var body: some View {
+        Picker("Travel by", selection: $travelRaw) {
+            ForEach(TravelMode.allCases) { mode in
+                Label(mode.title, systemImage: mode.systemImage).tag(mode.rawValue)
+            }
+        }
+        .pickerStyle(.segmented)
+        .onChange(of: travelRaw) { _, _ in onChange?() }
+    }
+}
+
 struct SpeedControl: View {
-    @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var speedKmh = 5.0
+    @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
+    @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var walkingSpeed = TravelMode.walk.defaultSpeedKmh
+    @AppStorage(UserDefaults.Keys.cyclingSpeedKmh) private var cyclingSpeed = TravelMode.cycle.defaultSpeedKmh
+    @AppStorage(UserDefaults.Keys.drivingSpeedKmh) private var drivingSpeed = TravelMode.drive.defaultSpeedKmh
+
+    private var travel: TravelMode { TravelMode(rawValue: travelRaw) ?? .walk }
+
+    private var speed: Binding<Double> {
+        switch travel {
+        case .walk: return $walkingSpeed
+        case .cycle: return $cyclingSpeed
+        case .drive: return $drivingSpeed
+        }
+    }
 
     var body: some View {
         HStack(spacing: 10) {
             Menu {
-                ForEach(SpeedPreset.allCases) { preset in
-                    Button {
-                        speedKmh = preset.rawValue
-                    } label: {
-                        Label("\(preset.title) · \(Self.label(preset.rawValue))", systemImage: preset.systemImage)
+                ForEach(travel.presets, id: \.kmh) { preset in
+                    Button("\(preset.title) · \(Self.label(preset.kmh))") {
+                        speed.wrappedValue = preset.kmh
                     }
                 }
             } label: {
-                Image(systemName: icon)
+                Image(systemName: travel.systemImage)
                     .frame(width: 28, height: 28)
             }
             .accessibilityLabel("Speed presets")
 
-            Slider(value: $speedKmh, in: 1...25, step: 0.5)
+            Slider(
+                value: Binding(
+                    get: { min(max(speed.wrappedValue, travel.speedRange.lowerBound), travel.speedRange.upperBound) },
+                    set: { speed.wrappedValue = $0 }
+                ),
+                in: travel.speedRange,
+                step: travel.speedStep
+            )
 
-            Text(Self.label(speedKmh))
+            Text(Self.label(travel.speedKmh))
                 .font(.subheadline.monospacedDigit())
-                .frame(width: 70, alignment: .trailing)
-        }
-    }
-
-    private var icon: String {
-        switch speedKmh {
-        case ..<7.5: return "figure.walk"
-        case ..<13: return "figure.run"
-        default: return "bicycle"
+                .frame(width: 76, alignment: .trailing)
         }
     }
 
     static func label(_ kmh: Double) -> String {
         if Locale.current.measurementSystem == .us {
-            return String(format: "%.1f mph", kmh / 1.609344)
+            let mph = kmh / 1.609344
+            return mph >= 20 ? String(format: "%.0f mph", mph) : String(format: "%.1f mph", mph)
         }
-        return String(format: "%.1f km/h", kmh)
+        return kmh >= 20 ? String(format: "%.0f km/h", kmh) : String(format: "%.1f km/h", kmh)
     }
 }
 

@@ -17,7 +17,10 @@ enum AppBootstrapper {
         UserDefaults.standard.register(defaults: [
             UserDefaults.Keys.keepAliveAudio: true,
             UserDefaults.Keys.keepAliveLocation: true,
-            UserDefaults.Keys.walkingSpeedKmh: 5.0,
+            UserDefaults.Keys.walkingSpeedKmh: TravelMode.walk.defaultSpeedKmh,
+            UserDefaults.Keys.cyclingSpeedKmh: TravelMode.cycle.defaultSpeedKmh,
+            UserDefaults.Keys.drivingSpeedKmh: TravelMode.drive.defaultSpeedKmh,
+            UserDefaults.Keys.useRouteSpeedEstimate: true,
             UserDefaults.Keys.naturalMovement: true,
             UserDefaults.Keys.followPaths: true
         ])

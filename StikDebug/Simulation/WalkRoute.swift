@@ -59,6 +59,8 @@ struct GeoPoint: Codable, Hashable {
 struct WalkRoute: Codable, Equatable {
     let points: [GeoPoint]
     let cumulative: [CLLocationDistance]
+    /// Apple Maps' average speed for driving routes, if known.
+    var estimatedSpeed: CLLocationSpeed?
 
     init?(points rawPoints: [GeoPoint]) {
         var points: [GeoPoint] = []
@@ -122,12 +124,16 @@ struct WalkRoute: Codable, Equatable {
     }
 
     func reversed() -> WalkRoute {
-        WalkRoute(points: points.reversed())!
+        var route = WalkRoute(points: points.reversed())!
+        route.estimatedSpeed = estimatedSpeed
+        return route
     }
 
     /// Joins routes end to end (used for multi-waypoint and round-trip routes).
     func appending(_ other: WalkRoute) -> WalkRoute {
-        WalkRoute(points: points + other.points)!
+        var route = WalkRoute(points: points + other.points)!
+        route.estimatedSpeed = estimatedSpeed ?? other.estimatedSpeed
+        return route
     }
 }
 

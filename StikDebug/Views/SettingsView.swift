@@ -70,13 +70,13 @@ struct SettingsView: View {
                     Toggle(isOn: $naturalMovement) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Natural Movement")
-                            Text("Adds a few metres of GPS drift and small speed changes so walks don't look robotic.")
+                            Text("Adds a few metres of GPS drift and small speed changes so movement doesn't look robotic.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 } header: {
-                    Text("Walking")
+                    Text("Movement")
                 }
 
                 Section {
