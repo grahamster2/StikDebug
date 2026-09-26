@@ -53,7 +53,7 @@ enum RoadSpeedService {
             .map { String(format: "%.6f,%.6f", $0.latitude, $0.longitude) }
             .joined(separator: ",")
         let query = """
-        [out:json][timeout:40];
+        [out:json][timeout:25];
         way(around:20,\(coordinates))[highway~"^(\(drivableRoads))$"]->.roads;
         .roads out body geom;
         node(w.roads)[highway~"^(stop|traffic_signals|give_way)$"];
@@ -62,7 +62,7 @@ enum RoadSpeedService {
 
         var lastError: Error = URLError(.cannotConnectToHost)
         for endpoint in endpoints {
-            var request = URLRequest(url: endpoint, timeoutInterval: 45)
+            var request = URLRequest(url: endpoint, timeoutInterval: 30)
             request.httpMethod = "POST"
             request.setValue("Wander/0.1 (personal location simulator)", forHTTPHeaderField: "User-Agent")
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")

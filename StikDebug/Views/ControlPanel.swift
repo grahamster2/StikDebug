@@ -238,8 +238,11 @@ struct ControlPanel: View {
                 }
             } else if let preview = planner.preview {
                 RouteSummary(route: preview)
+                if planner.isLoadingRoadData {
+                    roadDataLoadingRow
+                }
             }
-            if travel == .drive && realisticDriving && planner.preview?.driveProfile?.hasRoadSpeeds != false {
+            if travel == .drive && realisticDriving && (planner.isLoadingRoadData || planner.preview?.driveProfile?.hasRoadSpeeds != false) {
                 DriveStyleControl()
             } else {
                 SpeedControl()
@@ -274,6 +277,9 @@ struct ControlPanel: View {
             if let readout = engine.driveReadout {
                 DriveReadoutView(readout: readout)
             }
+            if engine.isDrivingRealistically, engine.route?.driveProfile?.hasRoadSpeeds == false, planner.isLoadingRoadData {
+                roadDataLoadingRow
+            }
 
             HStack {
                 statColumn("Travelled", Self.format(distance: engine.distanceWalked))
@@ -284,7 +290,7 @@ struct ControlPanel: View {
             }
 
             TravelModePicker(onChange: nil)
-            if engine.isDrivingRealistically && engine.route?.driveProfile?.hasRoadSpeeds == true {
+            if engine.isDrivingRealistically && (engine.route?.driveProfile?.hasRoadSpeeds == true || planner.isLoadingRoadData) {
                 DriveStyleControl()
             } else {
                 SpeedControl()
@@ -313,6 +319,16 @@ struct ControlPanel: View {
         .onAppear {
             // While walking, taps on the map pick a new destination.
             planner.mode = .walk
+        }
+    }
+
+    private var roadDataLoadingRow: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.mini)
+            Text("Loading speed limits and stop signs… you can start now.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
         }
     }
 

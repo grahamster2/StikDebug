@@ -49,6 +49,9 @@ final class Planner: ObservableObject {
 
     @Published private(set) var preview: WalkRoute?
     @Published private(set) var isPlanning = false
+    /// Road speeds are still loading for the previewed route. The route can
+    /// already be started; the speeds switch on when they arrive.
+    @Published private(set) var isLoadingRoadData = false
     /// What planning is doing right now, e.g. looking up speed limits.
     @Published private(set) var planningStatus = "Finding a route…"
     /// Non-fatal note about the plan, e.g. road data being unavailable.
@@ -56,6 +59,7 @@ final class Planner: ObservableObject {
     @Published var planError: String?
 
     private var planTask: Task<Void, Never>?
+    private var loadingRoadDataFor: [GeoPoint]?
     private let engine: SimulationEngine
 
     init() {
@@ -171,6 +175,10 @@ final class Planner: ObservableObject {
     func rebuild() {
         planTask?.cancel()
         preview = nil
+        if !SimulationEngine.shared.isMoving {
+            loadingRoadDataFor = nil
+            isLoadingRoadData = false
+        }
 
         let loop = LoopMode.current
         let travel = TravelMode.current
@@ -219,14 +227,15 @@ final class Planner: ObservableObject {
                     route = route.appending(back)
                 }
                 if realistic {
-                    self?.planningStatus = "Checking speed limits and stop signs…"
-                    let result = await RoadSpeedService.profile(for: route)
-                    route.driveProfile = result.profile
-                    self?.planNotice = result.problem.map { "\($0) Using a fixed speed with slowing for corners instead." }
+                    // Corners are instant; road speeds come from the network.
+                    route.driveProfile = DriveProfile(caps: DriveProfile.cornerCaps(for: route))
                 }
                 guard !Task.isCancelled, let self else { return }
                 self.preview = route
                 self.isPlanning = false
+                if realistic {
+                    self.loadRoadData(for: route)
+                }
                 self.applySpeedEstimate(route, travel: travel)
             } catch is CancellationError {
                 return
@@ -248,6 +257,30 @@ final class Planner: ObservableObject {
         let kmh = (speed * 3.6).rounded()
         let clamped = min(max(kmh, travel.speedRange.lowerBound), travel.speedRange.upperBound)
         UserDefaults.standard.set(clamped, forKey: travel.speedKey)
+    }
+
+    /// Fetches road speeds in the background and applies them to the preview
+    /// and, if it has already been started, to the running route. Not tied to
+    /// the planning task, so starting the drive doesn't cancel it.
+    private func loadRoadData(for route: WalkRoute) {
+        let points = route.points
+        loadingRoadDataFor = points
+        isLoadingRoadData = true
+        Task { [weak self] in
+            let result = await RoadSpeedService.profile(for: route)
+            guard let self else { return }
+            SimulationEngine.shared.applyDriveProfile(result.profile, toRouteWith: points)
+            if self.preview?.points == points {
+                self.preview?.driveProfile = result.profile
+            }
+            // Only the most recently planned route drives the loading indicator.
+            guard self.loadingRoadDataFor == points else { return }
+            self.loadingRoadDataFor = nil
+            self.isLoadingRoadData = false
+            if let problem = result.problem {
+                self.planNotice = "\(problem) Using a fixed speed with slowing for corners instead."
+            }
+        }
     }
 
     private func modeChanged() {

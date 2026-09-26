@@ -198,6 +198,20 @@ final class SimulationEngine: ObservableObject {
         persist(force: true)
     }
 
+    /// Road speeds arrive after a drive may already have started; slot them in.
+    func applyDriveProfile(_ profile: DriveProfile, toRouteWith points: [GeoPoint]) {
+        guard let route else { return }
+        if route.points == points {
+            self.route?.driveProfile = profile
+        } else if route.points == points.reversed() {
+            self.route?.driveProfile = profile.reversed(totalDistance: route.totalDistance)
+        } else {
+            return
+        }
+        car.routeChanged()
+        persist(force: true)
+    }
+
     func pause() {
         guard phase == .walking else { return }
         walkTask?.cancel()
