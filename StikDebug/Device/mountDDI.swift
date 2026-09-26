@@ -25,7 +25,7 @@ func isMounted() -> Bool {
 
 func checkMountStatus() -> MountCheckResult {
     do {
-        return try JITEnableContext.shared.isCryptexDDIInstalled() ? .mounted : .notMounted
+        return try DeviceTunnel.shared.isCryptexDDIInstalled() ? .mounted : .notMounted
     } catch {
         return .unreachable
     }
@@ -33,7 +33,7 @@ func checkMountStatus() -> MountCheckResult {
 
 func installCryptexDDI(from directoryPath: String) -> String? {
     do {
-        try JITEnableContext.shared.installCryptexDDI(from: directoryPath)
+        try DeviceTunnel.shared.installCryptexDDI(from: directoryPath)
     } catch {
         LogManager.shared.addErrorLog("Failed to install DDI cryptex: \(error.localizedDescription)")
         return error.localizedDescription

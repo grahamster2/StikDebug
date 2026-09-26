@@ -1,145 +1,108 @@
-//  SettingsView.swift
-//  StikDebug
 //
-//  Created by Stephen on 3/27/25.
+//  SettingsView.swift
+//  Wander
+//
 
 import SwiftUI
-import UIKit
 
 private enum SettingsLinks {
-    static let githubStars = URL(string: "https://github.com/StikDebug/StikDebug/stargazers")!
-    static let pairingFileGuide = URL(string: "https://github.com/StikDebug/StikDebug-Guide/blob/main/pairing_file.md")!
+    static let source = URL(string: "https://github.com/grahamster2/StikDebug")!
+    static let stikDebug = URL(string: "https://github.com/StephenDev0/StikDebug")!
     static let localDevVPN = URL(string: "https://apps.apple.com/us/app/localdevvpn/id6755608044")!
-    static let discord = URL(string: "https://discord.gg/qahjXNTDwS")!
 }
 
 struct SettingsView: View {
-    @AppStorage(UserDefaults.Keys.txmOverride) private var overrideTXMDetection = false
-    @AppStorage(UserDefaults.Keys.confirmExternalJITRequests) private var confirmExternalJITRequests = true
-    @AppStorage("keepAliveAudio") private var keepAliveAudio = true
-    @AppStorage("keepAliveLocation") private var keepAliveLocation = true
+    @ObservedObject var monitor: ConnectionMonitor
+    @ObservedObject var engine: SimulationEngine
+    @ObservedObject private var tunnel = TunnelManager.shared
+    @ObservedObject private var mounting = MountingProgress.shared
+
+    @AppStorage(UserDefaults.Keys.naturalMovement) private var naturalMovement = true
+    @AppStorage(UserDefaults.Keys.keepAliveAudio) private var keepAliveAudio = true
+    @AppStorage(UserDefaults.Keys.keepAliveLocation) private var keepAliveLocation = true
     @AppStorage(UserDefaults.Keys.targetDeviceIP) private var targetDeviceIP = DeviceConnectionContext.defaultTargetIPAddress
-    @AppStorage(UserDefaults.Keys.mallocDebug) private var mallocDebug = false
 
-    @State private var isShowingPairingFilePicker = false
-    @State private var isImportingFile = false
-    @State private var pairingImportMessage: (text: String, isError: Bool)?
-    @State private var showDDIConfirmation = false
-    @State private var isRedownloadingDDI = false
-    @State private var ddiDownloadProgress: Double = 0.0
-    @State private var ddiStatusMessage: String = ""
-    @State private var ddiResultMessage: (text: String, isError: Bool)?
+    @Binding var showPairingImporter: Bool
+    @Environment(\.dismiss) private var dismiss
 
-    private var appVersion: String {
-        let marketingVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        return marketingVersion
-    }
+    @State private var isRedownloading = false
+    @State private var redownloadStatus: String?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    HStack {
-                        Spacer()
-                        VStack(spacing: 12) {
-                            Image("StikDebug")
-                                .resizable().aspectRatio(contentMode: .fit)
-                                .frame(width: 80, height: 80)
-                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            Text("StikDebug").font(.title2.weight(.semibold))
-                        }
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                    .padding(.vertical, 8)
-                }
+                    statusRow("Pairing file", ok: monitor.hasPairingFile, detail: monitor.hasPairingFile ? "Imported" : "Missing")
+                    statusRow("LocalDevVPN link", ok: tunnel.isConnected, detail: tunnel.isStarting ? "Connecting…" : (tunnel.isConnected ? "Connected" : "Not connected"))
+                    statusRow("Developer disk image", ok: mounting.coolisMounted, detail: mounting.mountingThread != nil ? "Mounting…" : (mounting.coolisMounted ? "Mounted" : "Not mounted"))
 
-                Section {
-                    Link(destination: SettingsLinks.githubStars) {
-                        Label("Star on GitHub", systemImage: "star")
+                    Button {
+                        monitor.reconnect(showErrors: true)
+                    } label: {
+                        Label("Reconnect", systemImage: "arrow.clockwise")
                     }
+                    .disabled(tunnel.isStarting || !monitor.hasPairingFile)
+
+                    if let message = tunnel.lastErrorMessage, !tunnel.isConnected {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Connection")
+                } footer: {
+                    Text("Wander needs LocalDevVPN connected to talk to your iPhone's developer services.")
                 }
 
                 Section("Pairing File") {
                     Button {
-                        isShowingPairingFilePicker = true
+                        dismiss()
+                        // Give the sheet time to close before presenting the picker.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            showPairingImporter = true
+                        }
                     } label: {
-                        Label("Import Pairing File", systemImage: "doc.badge.plus")
+                        Label(monitor.hasPairingFile ? "Replace Pairing File" : "Import Pairing File", systemImage: "doc.badge.plus")
                     }
-                    .disabled(isImportingFile)
+                }
 
-                    if isImportingFile {
-                        HStack(spacing: 10) {
-                            ProgressView()
-                                .controlSize(.small)
-                            Text("Importing pairing file…")
+                Section {
+                    Toggle(isOn: $naturalMovement) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Natural Movement")
+                            Text("Adds a few metres of GPS drift and small speed changes so walks don't look robotic.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                    } else if let pairingImportMessage {
-                        Label(
-                            pairingImportMessage.text,
-                            systemImage: pairingImportMessage.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(pairingImportMessage.isError ? .red : .green)
                     }
+                } header: {
+                    Text("Walking")
                 }
 
                 Section {
                     Toggle(isOn: $keepAliveAudio) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Silent Audio")
-                            Text("Plays inaudible audio so iOS keeps the app running.")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Plays inaudible audio during a simulation so iOS keeps Wander running in the background.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .onChange(of: keepAliveAudio) { _, enabled in
-                        if enabled { BackgroundAudioManager.shared.start() }
-                        else { BackgroundAudioManager.shared.stop() }
-                    }
-
                     Toggle(isOn: $keepAliveLocation) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Background Location")
-                            Text("Uses low-accuracy location to stay alive when an activity needs it.")
-                                .font(.caption).foregroundStyle(.secondary)
+                            Text("Keeps a low-accuracy location session open during a simulation for the same reason.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .onChange(of: keepAliveLocation) { _, enabled in
                         if !enabled { BackgroundLocationManager.shared.stop() }
                     }
-
                 } header: {
-                    Text("Background Keep-Alive")
-                }
-
-                Section("Behavior") {
-                    Toggle(isOn: $confirmExternalJITRequests) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Confirm JIT Links")
-                            Text("Ask before external links enable JIT or run scripts.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Toggle(isOn: $overrideTXMDetection) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Always Run Scripts")
-                            Text("Treats device as TXM-capable to bypass hardware checks.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Section("Debugging") {
-                    Toggle(isOn: $mallocDebug) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Malloc Debugging")
-                            Text("Attaches processes with MallocGuardEdges and MallocScribble to detect memory corruption.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                    Text("Keep Running in Background")
+                } footer: {
+                    Text("Walks only continue while Wander is running. Leave both on unless they cause problems.")
                 }
 
                 Section("Advanced") {
@@ -154,153 +117,81 @@ struct SettingsView: View {
                             .keyboardType(.numbersAndPunctuation)
                             .frame(maxWidth: 160)
                     }
-                    Button { openAppFolder() } label: {
-                        Label("App Folder", systemImage: "folder")
-                    }.foregroundStyle(.primary)
-                    Button { showDDIConfirmation = true } label: {
-                        Label("Redownload DDI", systemImage: "arrow.down.circle")
-                    }.foregroundStyle(.primary).disabled(isRedownloadingDDI)
-                    if isRedownloadingDDI {
-                        VStack(alignment: .leading, spacing: 4) {
-                            ProgressView(value: ddiDownloadProgress, total: 1.0)
-                            Text(ddiStatusMessage).font(.caption).foregroundStyle(.secondary)
-                        }
-                    } else if let result = ddiResultMessage {
-                        Text(result.text).font(.caption).foregroundStyle(result.isError ? .red : .green)
+
+                    Button {
+                        redownloadDiskImage()
+                    } label: {
+                        Label("Redownload Disk Image", systemImage: "arrow.down.circle")
                     }
+                    .disabled(isRedownloading)
+
+                    if let redownloadStatus {
+                        Text(redownloadStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(role: .destructive) {
+                        Task { await engine.restoreRealLocation() }
+                    } label: {
+                        Label("Force Restore Real Location", systemImage: "location.slash")
+                    }
+                    .disabled(engine.isBusy)
                 }
 
-                Section("Help") {
-                    Link(destination: SettingsLinks.pairingFileGuide) {
-                        Label("Pairing File Guide", systemImage: "questionmark.circle")
-                    }
+                Section("About") {
+                    LabeledContent("Version", value: appVersion)
                     Link(destination: SettingsLinks.localDevVPN) {
-                        Label("Download LocalDevVPN", systemImage: "arrow.down.circle")
+                        Label("Get LocalDevVPN", systemImage: "arrow.down.app")
                     }
-                    Link(destination: SettingsLinks.discord) {
-                        Label("Discord Support", systemImage: "bubble.left.and.bubble.right")
+                    Link(destination: SettingsLinks.source) {
+                        Label("Source Code", systemImage: "chevron.left.forwardslash.chevron.right")
                     }
-                }
-
-                Section {
-                    Text(versionFooter)
-                        .font(.footnote).foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .listRowBackground(Color.clear)
+                    Link(destination: SettingsLinks.stikDebug) {
+                        Label("Built on StikDebug (AGPL-3.0)", systemImage: "heart")
+                    }
                 }
             }
             .navigationTitle("Settings")
-        }
-        .fileImporter(
-            isPresented: $isShowingPairingFilePicker,
-            allowedContentTypes: PairingFileStore.supportedContentTypes,
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                guard let url = urls.first else { return }
-
-                let fileManager = FileManager.default
-                isImportingFile = true
-                pairingImportMessage = nil
-
-                do {
-                    try PairingFileStore.importFromPicker(url, fileManager: fileManager)
-                    isImportingFile = false
-                    pairingImportMessage = ("Imported successfully", false)
-                    startTunnelInBackground()
-                    schedulePairingStatusDismiss()
-                } catch {
-                    isImportingFile = false
-                    pairingImportMessage = ("Import failed: \(error.localizedDescription)", true)
-                    schedulePairingStatusDismiss()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
-            case .failure(let error):
-                isImportingFile = false
-                pairingImportMessage = ("Import failed: \(error.localizedDescription)", true)
-                schedulePairingStatusDismiss()
             }
         }
-        .confirmationDialog("Redownload DDI Files?", isPresented: $showDDIConfirmation, titleVisibility: .visible) {
-            Button("Redownload", role: .destructive) {
-                redownloadDDIPressed()
-            }
-            Button("Cancel", role: .cancel) { }
-        } message: {
-            Text("Existing DDI files will be removed before downloading fresh copies.")
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        return "\(version) • iOS \(UIDevice.current.systemVersion)"
+    }
+
+    private func statusRow(_ title: String, ok: Bool, detail: String) -> some View {
+        HStack {
+            Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(ok ? .green : .red)
+            Text(title)
+            Spacer()
+            Text(detail)
+                .foregroundStyle(.secondary)
         }
     }
 
-    private var versionFooter: String {
-        let processInfo = ProcessInfo.processInfo
-        let txmLabel: String
-        if processInfo.isTXMOverridden {
-            txmLabel = "TXM (Override)"
-        } else {
-            txmLabel = processInfo.hasTXM ? "TXM" : "Non TXM"
-        }
-        return "Version \(appVersion) • iOS \(UIDevice.current.systemVersion) • \(txmLabel)"
-    }
-
-    // MARK: - Business Logic
-
-    private func openAppFolder() {
-        guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        let path = documentsURL.absoluteString.replacingOccurrences(of: "file://", with: "shareddocuments://")
-        if let url = URL(string: path) {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-    }
-
-    private func redownloadDDIPressed() {
-        guard !isRedownloadingDDI else { return }
+    private func redownloadDiskImage() {
+        isRedownloading = true
+        redownloadStatus = "Starting download…"
         Task {
-            await MainActor.run {
-                isRedownloadingDDI = true
-                ddiDownloadProgress = 0
-                ddiStatusMessage = "Preparing download…"
-                ddiResultMessage = nil
-            }
             do {
-                try await redownloadDDI { progress, status in
-                    Task { @MainActor in
-                        self.ddiDownloadProgress = progress
-                        self.ddiStatusMessage = status
-                    }
+                try await redownloadDDI { _, status in
+                    Task { @MainActor in redownloadStatus = status }
                 }
-                await MainActor.run {
-                    isRedownloadingDDI = false
-                    ddiResultMessage = ("DDI files refreshed successfully.", false)
-                }
+                redownloadStatus = "Disk image downloaded."
+                MountingProgress.shared.pubMount()
             } catch {
-                await MainActor.run {
-                    isRedownloadingDDI = false
-                    ddiResultMessage = ("Failed to redownload DDI files: \(error.localizedDescription)", true)
-                }
+                redownloadStatus = "Download failed: \(error.localizedDescription)"
             }
-        }
-        scheduleDDIStatusDismiss()
-    }
-
-    private func schedulePairingStatusDismiss() {
-        Task {
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            await MainActor.run {
-                if !isImportingFile {
-                    pairingImportMessage = nil
-                }
-            }
-        }
-    }
-
-    private func scheduleDDIStatusDismiss() {
-        Task {
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            await MainActor.run {
-                if !isRedownloadingDDI {
-                    ddiResultMessage = nil
-                }
-            }
+            isRedownloading = false
         }
     }
 }

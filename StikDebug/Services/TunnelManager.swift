@@ -9,8 +9,9 @@ final class TunnelManager: ObservableObject {
     static let shared = TunnelManager()
 
     @Published private(set) var isConnected = false
-
-    private var isStarting = false
+    @Published private(set) var isStarting = false
+    /// Explanation of the last failed connection attempt, shown in Settings.
+    @Published private(set) var lastErrorMessage: String?
 
     private init() {}
 
@@ -31,6 +32,7 @@ final class TunnelManager: ObservableObject {
         let pairingFileURL = PairingFileStore.prepareURL()
         guard FileManager.default.fileExists(atPath: pairingFileURL.path) else {
             isConnected = false
+            lastErrorMessage = "No pairing file imported yet."
             return
         }
 
@@ -43,7 +45,7 @@ final class TunnelManager: ObservableObject {
         DispatchQueue.global(qos: .userInteractive).async { [showErrorUI] in
             let result: Result<Void, NSError>
             do {
-                try JITEnableContext.shared.startTunnel()
+                try DeviceTunnel.shared.startTunnel()
                 result = .success(())
             } catch {
                 result = .failure(error as NSError)
@@ -61,6 +63,7 @@ final class TunnelManager: ObservableObject {
         switch result {
         case .success:
             isConnected = true
+            lastErrorMessage = nil
             LogManager.shared.addInfoLog("Tunnel connected successfully")
             mountDeveloperDiskImageIfNeeded()
         case .failure(let error):
@@ -81,6 +84,7 @@ final class TunnelManager: ObservableObject {
 
     private func handleStartFailure(_ error: NSError, showErrorUI: Bool) {
         LogManager.shared.addErrorLog(tunnelConnectionLogMessage(for: error))
+        lastErrorMessage = tunnelConnectionAlertMessage(for: error)
         guard showErrorUI else {
             return
         }
@@ -112,7 +116,7 @@ final class TunnelManager: ObservableObject {
             showTryAgain: false,
             primaryButtonText: "Select New File"
         ) { _ in
-            NotificationCenter.default.post(name: NSNotification.Name("ShowPairingFilePicker"), object: nil)
+            NotificationCenter.default.post(name: .showPairingFilePicker, object: nil)
         }
     }
 
@@ -149,9 +153,9 @@ private func tunnelConnectionAlertMessage(for error: NSError) -> String {
     if error.code == 48 || lowercasedMessage.contains("address already in use") || lowercasedMessage.contains("port already in use") {
         likelyCause = "A port needed for the tunnel is already in use."
         recoverySteps = [
-            "Close other JIT, debugging, proxy, or VPN apps that may be using the tunnel.",
+            "Close other debugging, proxy, or VPN apps that may be using the tunnel.",
             "Disconnect and reconnect LocalDevVPN.",
-            "Restart StikDebug, then try again.",
+            "Restart Wander, then try again.",
             "If it keeps happening, reboot the device to clear the stuck port."
         ]
     } else if error.code == 54 || lowercasedMessage.contains("connection reset") {
@@ -207,4 +211,8 @@ private func tunnelConnectionAlertMessage(for error: NSError) -> String {
     Technical details:
     Code \(error.code): \(rawMessage)
     """
+}
+
+extension Notification.Name {
+    static let showPairingFilePicker = Notification.Name("ShowPairingFilePicker")
 }
