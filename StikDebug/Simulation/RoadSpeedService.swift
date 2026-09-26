@@ -1,6 +1,6 @@
 //
 //  RoadSpeedService.swift
-//  Wander
+//  Drift
 //
 //  Looks up the roads along a driving route in OpenStreetMap (via the public
 //  Overpass API): speed limits, road types, stop signs and traffic lights.
@@ -64,7 +64,7 @@ enum RoadSpeedService {
         for endpoint in endpoints {
             var request = URLRequest(url: endpoint, timeoutInterval: 30)
             request.httpMethod = "POST"
-            request.setValue("Wander/0.1 (personal location simulator)", forHTTPHeaderField: "User-Agent")
+            request.setValue("Drift/0.1 (personal location simulator)", forHTTPHeaderField: "User-Agent")
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
             var body = URLComponents()
             body.queryItems = [URLQueryItem(name: "data", value: query)]

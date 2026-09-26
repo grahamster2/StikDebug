@@ -1,6 +1,6 @@
 //
 //  CoordinateImportParser.swift
-//  Wander
+//  Drift
 //
 //  Carried over from StikDebug. Reads GPX, KML, GeoJSON, JSON, CSV or plain
 //  text and returns the coordinates it finds.

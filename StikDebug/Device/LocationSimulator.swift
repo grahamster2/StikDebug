@@ -1,6 +1,6 @@
 //
 //  LocationSimulator.swift
-//  Wander
+//  Drift
 //
 //  Talks to the device's DVT location simulation service over its own RSD
 //  tunnel. Every call must run on `LocationSimulator.queue`.
@@ -10,7 +10,7 @@ import Foundation
 import idevice
 
 enum LocationSimulator {
-    static let queue = DispatchQueue(label: "wander.location-sim", qos: .userInitiated)
+    static let queue = DispatchQueue(label: "drift.location-sim", qos: .userInitiated)
 
     enum Status {
         static let ok: Int32 = 0
@@ -84,7 +84,7 @@ enum LocationSimulator {
 
         let tunnel: (adapter: OpaquePointer, handshake: OpaquePointer)
         do {
-            tunnel = try DeviceTunnel.createTunnel(hostname: "WanderLocation")
+            tunnel = try DeviceTunnel.createTunnel(hostname: "DriftLocation")
         } catch let error as NSError {
             switch error.code {
             case -18: return Status.invalidIP

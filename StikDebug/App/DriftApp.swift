@@ -1,12 +1,12 @@
 //
-//  WanderApp.swift
-//  Wander
+//  DriftApp.swift
+//  Drift
 //
 
 import SwiftUI
 
 @main
-struct WanderApp: App {
+struct DriftApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var shouldReconnect = false
 
@@ -46,7 +46,7 @@ struct WanderApp: App {
         } catch {
             showAlert(
                 title: "Couldn't Download Developer Disk Image",
-                message: "Wander needs this once to simulate location. Check your internet connection, then use Settings → Redownload Disk Image.\n\n\(error.localizedDescription)",
+                message: "Drift needs this once to simulate location. Check your internet connection, then use Settings → Redownload Disk Image.\n\n\(error.localizedDescription)",
                 showOk: true
             )
         }

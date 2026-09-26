@@ -1,6 +1,6 @@
 //
 //  PlaceStore.swift
-//  Wander
+//  Drift
 //
 
 import Foundation

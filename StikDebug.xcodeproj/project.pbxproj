@@ -440,7 +440,7 @@
 		DC6F1D5D2D94EADF0071B2B6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = StikDebug;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Drift;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CLANG_ENABLE_MODULES = YES;
@@ -460,10 +460,10 @@
 				INFOPLIST_FILE = StikDebug/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Wander connects to your iPhone's developer services through LocalDevVPN to set its location.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Wander uses location to keep running in the background so your simulated walk continues.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Wander shows your simulated position on the map and keeps walks running in the background.";
-				INFOPLIST_KEY_CFBundleDisplayName = Wander;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Drift connects to your iPhone's developer services through LocalDevVPN to set its location.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Drift uses location to keep running in the background so your simulated walk continues.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Drift shows your simulated position on the map and keeps walks running in the background.";
+				INFOPLIST_KEY_CFBundleDisplayName = Drift;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -503,7 +503,7 @@
 		DC6F1D5E2D94EADF0071B2B6 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = StikDebug;
+				ASSETCATALOG_COMPILER_APPICON_NAME = Drift;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CLANG_ENABLE_MODULES = YES;
@@ -523,10 +523,10 @@
 				INFOPLIST_FILE = StikDebug/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Wander connects to your iPhone's developer services through LocalDevVPN to set its location.";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Wander uses location to keep running in the background so your simulated walk continues.";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Wander shows your simulated position on the map and keeps walks running in the background.";
-				INFOPLIST_KEY_CFBundleDisplayName = Wander;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Drift connects to your iPhone's developer services through LocalDevVPN to set its location.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Drift uses location to keep running in the background so your simulated walk continues.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Drift shows your simulated position on the map and keeps walks running in the background.";
+				INFOPLIST_KEY_CFBundleDisplayName = Drift;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

@@ -1,6 +1,6 @@
 //
 //  Planner.swift
-//  Wander
+//  Drift
 //
 //  Everything the user is setting up on the map before (or while) the engine
 //  runs it: a pin to jump to, a walk destination, or a hand-drawn route.

@@ -42,7 +42,7 @@ final class LogManager: ObservableObject {
     ]
 
     private init() {
-        addInfoLog("Wander starting up")
+        addInfoLog("Drift starting up")
         addInfoLog("Initializing environment")
     }
 

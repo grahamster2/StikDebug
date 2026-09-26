@@ -1,6 +1,6 @@
 //
 //  PlacesSheet.swift
-//  Wander
+//  Drift
 //
 
 import SwiftUI

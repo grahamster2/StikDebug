@@ -1,6 +1,6 @@
 //
 //  ConnectionViews.swift
-//  Wander
+//  Drift
 //
 
 import SwiftUI
@@ -169,7 +169,7 @@ struct SetupCard: View {
         case .needsPairingFile:
             return "Pick the same pairing file SideStore uses (On My iPhone → SideStore → ALTPairingFile.mobiledevicepairing)."
         case .disconnected:
-            return "Open LocalDevVPN and connect it. Wander will reconnect automatically."
+            return "Open LocalDevVPN and connect it. Drift will reconnect automatically."
         default:
             return ""
         }

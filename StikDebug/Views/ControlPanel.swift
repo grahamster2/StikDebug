@@ -1,6 +1,6 @@
 //
 //  ControlPanel.swift
-//  Wander
+//  Drift
 //
 
 import SwiftUI

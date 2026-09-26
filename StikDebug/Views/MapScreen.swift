@@ -1,6 +1,6 @@
 //
 //  MapScreen.swift
-//  Wander
+//  Drift
 //
 
 import SwiftUI

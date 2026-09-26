@@ -1,6 +1,6 @@
 //
 //  CarModel.swift
-//  Wander
+//  Drift
 //
 //  Moves a car along a route with a drive profile: cruises near each road's
 //  limit, brakes ahead of corners, lower limits and stops, pulls away

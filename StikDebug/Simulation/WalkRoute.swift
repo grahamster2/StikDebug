@@ -1,6 +1,6 @@
 //
 //  WalkRoute.swift
-//  Wander
+//  Drift
 //
 
 import CoreLocation

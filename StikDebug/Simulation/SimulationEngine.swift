@@ -1,6 +1,6 @@
 //
 //  SimulationEngine.swift
-//  Wander
+//  Drift
 //
 //  Owns the device's simulated location: holding a fixed point, or walking a
 //  route at a chosen speed with optional natural GPS drift.

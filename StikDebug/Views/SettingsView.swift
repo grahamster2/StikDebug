@@ -1,6 +1,6 @@
 //
 //  SettingsView.swift
-//  Wander
+//  Drift
 //
 
 import SwiftUI
@@ -53,7 +53,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Connection")
                 } footer: {
-                    Text("Wander needs LocalDevVPN connected to talk to your iPhone's developer services.")
+                    Text("Drift needs LocalDevVPN connected to talk to your iPhone's developer services.")
                 }
 
                 Section("Pairing File") {
@@ -109,7 +109,7 @@ struct SettingsView: View {
                     Toggle(isOn: $keepAliveAudio) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Silent Audio")
-                            Text("Plays inaudible audio during a simulation so iOS keeps Wander running in the background.")
+                            Text("Plays inaudible audio during a simulation so iOS keeps Drift running in the background.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -128,7 +128,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Keep Running in Background")
                 } footer: {
-                    Text("Walks only continue while Wander is running. Leave both on unless they cause problems.")
+                    Text("Walks only continue while Drift is running. Leave both on unless they cause problems.")
                 }
 
                 Section("Advanced") {

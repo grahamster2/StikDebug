@@ -1,6 +1,6 @@
 //
 //  DriveProfile.swift
-//  Wander
+//  Drift
 //
 //  What a realistic drive needs to know about a route, keyed by distance
 //  along it: each road's speed limit, how fast each corner can be taken,

@@ -1,6 +1,6 @@
 //
 //  DeviceTunnel.swift
-//  Wander
+//  Drift
 //
 //  Trimmed from StikDebug's JITEnableContext: only the RSD tunnel and the
 //  developer disk image (cryptex) calls that location simulation needs.
@@ -32,7 +32,7 @@ final class DeviceTunnel {
     // MARK: - Errors
 
     static func makeError(_ message: String, code: Int = -1) -> NSError {
-        NSError(domain: "Wander", code: code, userInfo: [NSLocalizedDescriptionKey: message])
+        NSError(domain: "Drift", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     static func consume(_ ffiError: UnsafeMutablePointer<IdeviceFfiError>?, fallback: String) -> NSError {
@@ -135,7 +135,7 @@ final class DeviceTunnel {
 
         let tunnel: (adapter: OpaquePointer, handshake: OpaquePointer)
         do {
-            tunnel = try Self.createTunnel(hostname: "Wander")
+            tunnel = try Self.createTunnel(hostname: "Drift")
         } catch let error as NSError {
             finalError = error
             throw error
