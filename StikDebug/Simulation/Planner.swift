@@ -54,8 +54,8 @@ final class Planner: ObservableObject {
     private var planTask: Task<Void, Never>?
     private let engine: SimulationEngine
 
-    init(engine: SimulationEngine = .shared) {
-        self.engine = engine
+    init() {
+        engine = .shared
     }
 
     /// Where a new walk begins: the current simulated position if there is one.
