@@ -35,20 +35,24 @@ struct MapScreen: View {
 
             VStack(spacing: 8) {
                 topBar
-                if searchFocused || !search.results.isEmpty {
+                if isSearching {
                     searchResults
-                }
-                HStack {
-                    ConnectionBadge(monitor: monitor) { showSettings = true }
-                    Spacer()
-                    mapButtons
+                } else {
+                    HStack(alignment: .top) {
+                        ConnectionBadge(monitor: monitor) { showSettings = true }
+                        Spacer()
+                        mapButtons
+                    }
                 }
             }
             .padding(.horizontal, 12)
             .padding(.top, 4)
         }
         .safeAreaInset(edge: .bottom) {
-            ControlPanel(
+            // Hidden while searching so the results get the whole screen
+            // above the keyboard.
+            if !isSearching {
+                ControlPanel(
                 engine: engine,
                 planner: planner,
                 monitor: monitor,
@@ -59,7 +63,8 @@ struct MapScreen: View {
                     favouriteName = ""
                     favouriteTarget = point
                 }
-            )
+                )
+            }
         }
         .onChange(of: engine.currentPoint) { _, newPoint in
             guard followWalker, engine.isMoving, let newPoint else { return }
@@ -232,6 +237,10 @@ struct MapScreen: View {
 
     // MARK: - Search
 
+    private var isSearching: Bool {
+        searchFocused || !search.results.isEmpty
+    }
+
     private var topBar: some View {
         HStack(spacing: 8) {
             HStack(spacing: 6) {
@@ -260,8 +269,16 @@ struct MapScreen: View {
             .padding(.vertical, 10)
             .background(.regularMaterial, in: Capsule())
 
-            circleButton("star.fill", label: "Places") { showPlaces = true }
-            circleButton("gearshape.fill", label: "Settings") { showSettings = true }
+            if isSearching {
+                Button("Cancel") {
+                    searchFocused = false
+                    searchText = ""
+                    search.clear()
+                }
+            } else {
+                circleButton("star.fill", label: "Places") { showPlaces = true }
+                circleButton("gearshape.fill", label: "Settings") { showSettings = true }
+            }
         }
     }
 
@@ -274,6 +291,17 @@ struct MapScreen: View {
     }
 
     private var searchResults: some View {
+        ScrollView {
+            searchResultRows
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
+        .frame(maxHeight: 380)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var searchResultRows: some View {
         VStack(spacing: 0) {
             ForEach(search.results, id: \.self) { result in
                 Button {
@@ -316,7 +344,6 @@ struct MapScreen: View {
                 }
             }
         }
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func submitSearch() {
