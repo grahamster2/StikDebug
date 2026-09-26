@@ -18,6 +18,7 @@ struct ControlPanel: View {
 
     @AppStorage(UserDefaults.Keys.followPaths) private var followPaths = true
     @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
+    @AppStorage(UserDefaults.Keys.realisticDriving) private var realisticDriving = true
 
     private var travel: TravelMode { TravelMode(rawValue: travelRaw) ?? .walk }
     @State private var showEndOptions = false
@@ -42,6 +43,8 @@ struct ControlPanel: View {
 
             if let message = engine.errorMessage ?? planner.planError {
                 errorRow(message)
+            } else if let notice = planner.planNotice {
+                noticeRow(notice)
             }
         }
         .padding(16)
@@ -228,15 +231,19 @@ struct ControlPanel: View {
             if planner.isPlanning {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Finding a route…")
+                    Text(planner.planningStatus)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                 }
             } else if let preview = planner.preview {
-                RouteSummary(distance: preview.totalDistance)
+                RouteSummary(route: preview)
             }
-            SpeedControl()
+            if travel == .drive && realisticDriving && planner.preview?.driveProfile?.hasRoadSpeeds != false {
+                DriveStyleControl()
+            } else {
+                SpeedControl()
+            }
             LoopPicker { planner.rebuild() }
         }
     }
@@ -264,16 +271,24 @@ struct ControlPanel: View {
             ProgressView(value: engine.progress)
                 .tint(engine.phase == .paused ? .orange : .blue)
 
+            if let readout = engine.driveReadout {
+                DriveReadoutView(readout: readout)
+            }
+
             HStack {
-                statColumn("Walked", Self.format(distance: engine.distanceWalked))
+                statColumn("Travelled", Self.format(distance: engine.distanceWalked))
                 Spacer()
                 statColumn("Left", Self.format(distance: engine.remainingDistance))
                 Spacer()
-                statColumn("Time left", Self.format(duration: SimulationEngine.travelTime(for: engine.remainingDistance)))
+                statColumn("Time left", Self.format(duration: engine.remainingTime))
             }
 
             TravelModePicker(onChange: nil)
-            SpeedControl()
+            if engine.isDrivingRealistically && engine.route?.driveProfile?.hasRoadSpeeds == true {
+                DriveStyleControl()
+            } else {
+                SpeedControl()
+            }
             LoopPicker(onChange: nil)
 
             if planner.mode == .walk, planner.destination != nil, planner.isPlanning || planner.preview != nil {
@@ -305,7 +320,7 @@ struct ControlPanel: View {
         HStack {
             if planner.isPlanning {
                 ProgressView().controlSize(.small)
-                Text("Finding a new route…")
+                Text(planner.planningStatus)
                     .font(.footnote)
             } else if let preview = planner.preview {
                 VStack(alignment: .leading, spacing: 2) {
@@ -418,6 +433,27 @@ struct ControlPanel: View {
         .disabled(engine.isBusy)
     }
 
+    private func noticeRow(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.blue)
+            Text(message)
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button {
+                planner.planNotice = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
     private func errorRow(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -471,27 +507,167 @@ private struct ProminenceModifier: ViewModifier {
 // MARK: - Shared controls
 
 struct RouteSummary: View {
-    let distance: CLLocationDistance
-    // Observed so the time updates when the speed or mode changes.
+    let route: WalkRoute
+    // Observed so the time updates when the speed, mode or style changes.
     @AppStorage(UserDefaults.Keys.travelMode) private var travelRaw = TravelMode.walk.rawValue
     @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var walkingSpeed = TravelMode.walk.defaultSpeedKmh
     @AppStorage(UserDefaults.Keys.cyclingSpeedKmh) private var cyclingSpeed = TravelMode.cycle.defaultSpeedKmh
     @AppStorage(UserDefaults.Keys.drivingSpeedKmh) private var drivingSpeed = TravelMode.drive.defaultSpeedKmh
+    @AppStorage(UserDefaults.Keys.drivingStyle) private var drivingStyle = 1.0
+    @AppStorage(UserDefaults.Keys.realisticDriving) private var realisticDriving = true
 
     var body: some View {
         let travel = TravelMode(rawValue: travelRaw) ?? .walk
-        HStack {
-            Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
-                .foregroundStyle(.purple)
-            Text(ControlPanel.format(distance: distance))
-                .font(.subheadline.weight(.semibold))
-            Text("·")
-                .foregroundStyle(.secondary)
-            Text(ControlPanel.format(duration: distance / travel.speedMetersPerSecond))
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        let profile = travel == .drive && realisticDriving ? route.driveProfile : nil
+        let time = profile?.estimatedTime(
+            from: 0,
+            totalDistance: route.totalDistance,
+            style: drivingStyle,
+            fallbackSpeed: travel.speedMetersPerSecond
+        ) ?? route.totalDistance / travel.speedMetersPerSecond
+
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "point.bottomleft.forward.to.point.topright.scurvepath")
+                    .foregroundStyle(.purple)
+                Text(ControlPanel.format(distance: route.totalDistance))
+                    .font(.subheadline.weight(.semibold))
+                Text("·")
+                    .foregroundStyle(.secondary)
+                Text(ControlPanel.format(duration: time))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+            if let profile, profile.hasRoadSpeeds {
+                Text(Self.describe(profile))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    static func describe(_ profile: DriveProfile) -> String {
+        let signs = profile.stops.filter { $0.kind == .stopSign }.count
+        let lights = profile.stops.filter { $0.kind == .trafficSignal }.count
+        let limits = profile.segments.map(\.limit)
+        var parts: [String] = []
+        if let low = limits.min(), let high = limits.max() {
+            let lowLabel = SpeedControl.limitLabel(low)
+            let highLabel = SpeedControl.limitLabel(high)
+            parts.append(lowLabel == highLabel ? "\(lowLabel) roads" : "\(lowLabel)–\(highLabel) roads")
+        }
+        parts.append("\(signs) stop sign\(signs == 1 ? "" : "s")")
+        parts.append("\(lights) traffic light\(lights == 1 ? "" : "s")")
+        return parts.joined(separator: " · ")
+    }
+}
+
+struct DriveStyleControl: View {
+    @AppStorage(UserDefaults.Keys.drivingStyle) private var style = 1.0
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 10) {
+                Image(systemName: "car.fill")
+                    .frame(width: 28, height: 28)
+                Slider(value: $style, in: 0.85...1.15, step: 0.01)
+                Text(Self.label(style))
+                    .font(.subheadline.monospacedDigit())
+                    .frame(width: 76, alignment: .trailing)
+            }
+            HStack {
+                Text("Relaxed")
+                Spacer()
+                Text("Follows each road's limit")
+                Spacer()
+                Text("Aggressive")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    static func label(_ style: Double) -> String {
+        let percent = Int(((style - 1) * 100).rounded())
+        if percent == 0 { return "At limit" }
+        return percent > 0 ? "+\(percent)%" : "\(percent)%"
+    }
+}
+
+struct DriveReadoutView: View {
+    let readout: DriveReadout
+
+    var body: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(SpeedControl.speedNumber(readout.speed))
+                    .font(.system(size: 34, weight: .bold, design: .rounded).monospacedDigit())
+                Text(SpeedControl.speedUnit)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minWidth: 64, alignment: .leading)
+
+            if let limit = readout.limit {
+                SpeedLimitSign(limit: limit, isPosted: readout.limitIsPosted)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(readout.road ?? "Unnamed road")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                if let waiting = readout.waiting {
+                    Label(
+                        waiting == .stopSign ? "Stop sign" : "Red light · \(Int(readout.waitRemaining.rounded(.up)))s",
+                        systemImage: waiting == .stopSign ? "octagon.fill" : "light.beacon.max.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                } else if readout.limit != nil {
+                    Text(readout.limitIsPosted ? "Posted limit" : "Typical speed for this road")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Spacer()
         }
+        .padding(10)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+struct SpeedLimitSign: View {
+    let limit: CLLocationSpeed
+    let isPosted: Bool
+
+    private var isUS: Bool { Locale.current.measurementSystem == .us }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if isUS {
+                Text("LIMIT")
+                    .font(.system(size: 7, weight: .heavy))
+            }
+            Text(SpeedControl.speedNumber(limit, roundTo: 5))
+                .font(.system(size: 18, weight: .heavy, design: .rounded))
+        }
+        .foregroundStyle(.black)
+        .frame(width: 44, height: 44)
+        .background {
+            if isUS {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(.white)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(.black, lineWidth: 2))
+            } else {
+                Circle()
+                    .fill(.white)
+                    .overlay(Circle().stroke(.red, lineWidth: 4))
+            }
+        }
+        // Guessed limits are shown faded.
+        .opacity(isPosted ? 1 : 0.6)
+        .accessibilityLabel("Speed limit \(SpeedControl.limitLabel(limit))")
     }
 }
 
@@ -553,6 +729,20 @@ struct SpeedControl: View {
                 .font(.subheadline.monospacedDigit())
                 .frame(width: 76, alignment: .trailing)
         }
+    }
+
+    static var speedUnit: String {
+        Locale.current.measurementSystem == .us ? "mph" : "km/h"
+    }
+
+    /// Speed in the user's units as a bare number, e.g. "34".
+    static func speedNumber(_ metersPerSecond: CLLocationSpeed, roundTo step: Double = 1) -> String {
+        let value = Locale.current.measurementSystem == .us ? metersPerSecond * 2.236936 : metersPerSecond * 3.6
+        return String(Int((value / step).rounded() * step))
+    }
+
+    static func limitLabel(_ metersPerSecond: CLLocationSpeed) -> String {
+        "\(speedNumber(metersPerSecond, roundTo: 5)) \(speedUnit)"
     }
 
     static func label(_ kmh: Double) -> String {

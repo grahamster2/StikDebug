@@ -37,6 +37,16 @@ enum LoopMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// What the driving panel shows.
+struct DriveReadout: Equatable {
+    var speed: CLLocationSpeed
+    var limit: CLLocationSpeed?
+    var limitIsPosted: Bool
+    var road: String?
+    var waiting: CarModel.Waiting?
+    var waitRemaining: TimeInterval
+}
+
 /// What gets written to disk so an interrupted session can be resumed.
 struct SavedSession: Codable {
     enum Kind: String, Codable {
@@ -69,6 +79,8 @@ final class SimulationEngine: ObservableObject {
     @Published private(set) var distanceWalked: CLLocationDistance = 0
     @Published private(set) var isBusy = false
     @Published private(set) var recoverableSession: SavedSession?
+    /// Live speed, limit and road while driving realistically.
+    @Published private(set) var driveReadout: DriveReadout?
     @Published var errorMessage: String?
 
     private var walkTask: Task<Void, Never>?
@@ -81,6 +93,7 @@ final class SimulationEngine: ObservableObject {
     private var driftEast = 0.0
     private var driftNorth = 0.0
     private var speedFactor = 1.0
+    private var car = CarModel()
 
     private static let tickInterval: TimeInterval = 1
     private static let holdResendInterval: TimeInterval = 4
@@ -117,6 +130,36 @@ final class SimulationEngine: ObservableObject {
         distance / speedMetersPerSecond
     }
 
+    /// Whether the current route is driven with the car model.
+    var isDrivingRealistically: Bool {
+        guard let route else { return false }
+        return Self.usesCarModel(for: route)
+    }
+
+    static func usesCarModel(for route: WalkRoute) -> Bool {
+        TravelMode.current == .drive
+            && route.driveProfile != nil
+            && UserDefaults.standard.bool(forKey: UserDefaults.Keys.realisticDriving)
+    }
+
+    static var drivingStyle: Double {
+        let style = UserDefaults.standard.double(forKey: UserDefaults.Keys.drivingStyle)
+        return style > 0 ? style : 1
+    }
+
+    var remainingTime: TimeInterval {
+        guard let route else { return 0 }
+        if isDrivingRealistically, let profile = route.driveProfile {
+            return profile.estimatedTime(
+                from: distanceWalked,
+                totalDistance: route.totalDistance,
+                style: Self.drivingStyle,
+                fallbackSpeed: Self.speedMetersPerSecond
+            )
+        }
+        return Self.travelTime(for: remainingDistance)
+    }
+
     // MARK: - Commands
 
     /// Jumps straight to a point and holds it there.
@@ -124,6 +167,7 @@ final class SimulationEngine: ObservableObject {
         cancelTasks()
         guard await sendNow(point) else { return }
         route = nil
+        driveReadout = nil
         distanceWalked = 0
         currentPoint = point
         phase = .holding
@@ -138,6 +182,7 @@ final class SimulationEngine: ObservableObject {
         route = newRoute
         distanceWalked = 0
         currentPoint = newRoute.start
+        car.reset()
         phase = .walking
         startWalking()
         persist(force: true)
@@ -149,6 +194,7 @@ final class SimulationEngine: ObservableObject {
         guard isMoving else { return }
         route = newRoute
         distanceWalked = 0
+        car.routeChanged()
         persist(force: true)
     }
 
@@ -156,6 +202,7 @@ final class SimulationEngine: ObservableObject {
         guard phase == .walking else { return }
         walkTask?.cancel()
         walkTask = nil
+        driveReadout?.speed = 0
         phase = .paused
         startHolding()
         persist(force: true)
@@ -165,6 +212,7 @@ final class SimulationEngine: ObservableObject {
         guard phase == .paused else { return }
         holdTask?.cancel()
         holdTask = nil
+        car.reset()
         phase = .walking
         startWalking()
     }
@@ -175,6 +223,7 @@ final class SimulationEngine: ObservableObject {
         let walked = distanceWalked
         self.route = route.reversed()
         distanceWalked = route.totalDistance - walked
+        car.reset()
         persist(force: true)
     }
 
@@ -189,6 +238,7 @@ final class SimulationEngine: ObservableObject {
         route = nil
         currentPoint = nil
         distanceWalked = 0
+        driveReadout = nil
         releaseKeepAlive()
         clearPersistedSession()
 
@@ -218,6 +268,7 @@ final class SimulationEngine: ObservableObject {
             route = savedRoute
             distanceWalked = walked
             currentPoint = point
+            car.reset()
             // Come back paused so the user can get ready before moving again.
             phase = .paused
             startHolding()
@@ -264,13 +315,39 @@ final class SimulationEngine: ObservableObject {
         guard phase == .walking, let route else { return }
 
         let natural = UserDefaults.standard.bool(forKey: UserDefaults.Keys.naturalMovement)
-        if natural {
-            speedFactor = min(max(speedFactor + Double.random(in: -0.04...0.04), 0.85), 1.15)
+        if Self.usesCarModel(for: route), let profile = route.driveProfile {
+            let settings = CarModel.Settings(
+                style: Self.drivingStyle,
+                fallbackSpeed: Self.speedMetersPerSecond,
+                stopAtSignsAndLights: UserDefaults.standard.bool(forKey: UserDefaults.Keys.stopAtSignsAndLights),
+                brakeForEnd: LoopMode.current != .loop,
+                natural: natural
+            )
+            distanceWalked = car.advance(
+                from: distanceWalked,
+                by: elapsed,
+                profile: profile,
+                totalDistance: route.totalDistance,
+                settings: settings
+            )
+            let segment = profile.segment(at: distanceWalked)
+            driveReadout = DriveReadout(
+                speed: car.speed,
+                limit: segment?.limit,
+                limitIsPosted: segment?.isPosted ?? false,
+                road: segment?.name,
+                waiting: car.waiting,
+                waitRemaining: car.waitRemaining
+            )
         } else {
-            speedFactor = 1
+            if natural {
+                speedFactor = min(max(speedFactor + Double.random(in: -0.04...0.04), 0.85), 1.15)
+            } else {
+                speedFactor = 1
+            }
+            distanceWalked += Self.speedMetersPerSecond * speedFactor * elapsed
+            driveReadout = nil
         }
-
-        distanceWalked += Self.speedMetersPerSecond * speedFactor * elapsed
 
         if distanceWalked >= route.totalDistance {
             handleRouteEnd(route)
@@ -295,15 +372,18 @@ final class SimulationEngine: ObservableObject {
             sendInBackground(finished.end)
             walkTask?.cancel()
             walkTask = nil
+            driveReadout = nil
             phase = .holding
             startHolding()
             persist(force: true)
             Haptics.medium()
         case .loop where closed:
             distanceWalked = overshoot
+            car.routeChanged()
         case .loop, .backAndForth:
             route = finished.reversed()
             distanceWalked = overshoot
+            car.reset()
         }
     }
 

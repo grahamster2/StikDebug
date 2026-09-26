@@ -18,6 +18,8 @@ struct SettingsView: View {
     @ObservedObject private var mounting = MountingProgress.shared
 
     @AppStorage(UserDefaults.Keys.naturalMovement) private var naturalMovement = true
+    @AppStorage(UserDefaults.Keys.realisticDriving) private var realisticDriving = true
+    @AppStorage(UserDefaults.Keys.stopAtSignsAndLights) private var stopAtSignsAndLights = true
     @AppStorage(UserDefaults.Keys.keepAliveAudio) private var keepAliveAudio = true
     @AppStorage(UserDefaults.Keys.keepAliveLocation) private var keepAliveLocation = true
     @AppStorage(UserDefaults.Keys.targetDeviceIP) private var targetDeviceIP = DeviceConnectionContext.defaultTargetIPAddress
@@ -77,6 +79,30 @@ struct SettingsView: View {
                     }
                 } header: {
                     Text("Movement")
+                }
+
+                Section {
+                    Toggle(isOn: $realisticDriving) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Realistic Driving")
+                            Text("Looks up each road's speed limit and drives near it, slowing for corners and pulling away gradually.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Toggle(isOn: $stopAtSignsAndLights) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Stop at Signs and Lights")
+                            Text("Stops briefly at stop signs and sometimes waits at red lights.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(!realisticDriving)
+                } header: {
+                    Text("Driving")
+                } footer: {
+                    Text("Road data comes from OpenStreetMap. Where a road has no posted limit, a typical speed for that kind of road is used. Changes apply to the next route you plan.")
                 }
 
                 Section {

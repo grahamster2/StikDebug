@@ -61,6 +61,8 @@ struct WalkRoute: Codable, Equatable {
     let cumulative: [CLLocationDistance]
     /// Apple Maps' average speed for driving routes, if known.
     var estimatedSpeed: CLLocationSpeed?
+    /// Road speeds, corners and stops for realistic driving.
+    var driveProfile: DriveProfile?
 
     init?(points rawPoints: [GeoPoint]) {
         var points: [GeoPoint] = []
@@ -126,6 +128,7 @@ struct WalkRoute: Codable, Equatable {
     func reversed() -> WalkRoute {
         var route = WalkRoute(points: points.reversed())!
         route.estimatedSpeed = estimatedSpeed
+        route.driveProfile = driveProfile?.reversed(totalDistance: totalDistance)
         return route
     }
 

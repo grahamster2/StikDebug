@@ -49,6 +49,10 @@ final class Planner: ObservableObject {
 
     @Published private(set) var preview: WalkRoute?
     @Published private(set) var isPlanning = false
+    /// What planning is doing right now, e.g. looking up speed limits.
+    @Published private(set) var planningStatus = "Finding a route…"
+    /// Non-fatal note about the plan, e.g. road data being unavailable.
+    @Published var planNotice: String?
     @Published var planError: String?
 
     private var planTask: Task<Void, Never>?
@@ -148,6 +152,7 @@ final class Planner: ObservableObject {
         preview = nil
         isPlanning = false
         planError = nil
+        planNotice = nil
     }
 
     /// Loads an imported GPX (or similar) track as a drawn route.
@@ -196,6 +201,9 @@ final class Planner: ObservableObject {
         }
 
         isPlanning = true
+        planningStatus = "Finding a route…"
+        planNotice = nil
+        let realistic = travel == .drive && UserDefaults.standard.bool(forKey: UserDefaults.Keys.realisticDriving)
         planTask = Task { [weak self] in
             do {
                 var route = try await request()
@@ -209,6 +217,12 @@ final class Planner: ObservableObject {
                         back = WalkRoute(points: [route.end, route.start])!
                     }
                     route = route.appending(back)
+                }
+                if realistic {
+                    self?.planningStatus = "Checking speed limits and stop signs…"
+                    let result = await RoadSpeedService.profile(for: route)
+                    route.driveProfile = result.profile
+                    self?.planNotice = result.problem.map { "\($0) Using a fixed speed with slowing for corners instead." }
                 }
                 guard !Task.isCancelled, let self else { return }
                 self.preview = route
@@ -228,6 +242,7 @@ final class Planner: ObservableObject {
     /// (slower in town, faster on highways). The slider can still override it.
     private func applySpeedEstimate(_ route: WalkRoute, travel: TravelMode) {
         guard travel == .drive,
+              route.driveProfile?.hasRoadSpeeds != true,
               UserDefaults.standard.bool(forKey: UserDefaults.Keys.useRouteSpeedEstimate),
               let speed = route.estimatedSpeed, speed > 0 else { return }
         let kmh = (speed * 3.6).rounded()
@@ -240,6 +255,7 @@ final class Planner: ObservableObject {
         preview = nil
         isPlanning = false
         planError = nil
+        planNotice = nil
         rebuild()
     }
 }

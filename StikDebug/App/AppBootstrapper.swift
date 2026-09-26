@@ -21,6 +21,9 @@ enum AppBootstrapper {
             UserDefaults.Keys.cyclingSpeedKmh: TravelMode.cycle.defaultSpeedKmh,
             UserDefaults.Keys.drivingSpeedKmh: TravelMode.drive.defaultSpeedKmh,
             UserDefaults.Keys.useRouteSpeedEstimate: true,
+            UserDefaults.Keys.realisticDriving: true,
+            UserDefaults.Keys.stopAtSignsAndLights: true,
+            UserDefaults.Keys.drivingStyle: 1.0,
             UserDefaults.Keys.naturalMovement: true,
             UserDefaults.Keys.followPaths: true
         ])
