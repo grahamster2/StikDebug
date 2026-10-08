@@ -74,11 +74,11 @@ struct DriveProfile: Codable, Equatable {
         )
     }
 
-    /// Rough driving time for the rest of the route (without stops).
+    /// Rough driving time for the rest of the route.
     func estimatedTime(
         from distance: CLLocationDistance,
         totalDistance total: CLLocationDistance,
-        style: Double,
+        overspeed: CLLocationSpeed,
         fallbackSpeed: CLLocationSpeed
     ) -> TimeInterval {
         guard hasRoadSpeeds else {
@@ -87,20 +87,31 @@ struct DriveProfile: Codable, Equatable {
         var time: TimeInterval = 0
         for segment in segments where segment.end > distance {
             let length = segment.end - max(segment.start, distance)
-            time += length / max(segment.limit * style, 2)
+            let cruise = overspeed >= 0
+                ? segment.limit + min(overspeed, segment.limit * 0.5)
+                : segment.limit + max(overspeed, -segment.limit * 0.35)
+            time += length / max(cruise, 2)
         }
         let upcomingStops = stops.filter { $0.distance > distance && $0.kind != .yield }.count
-        // Corners, acceleration and the odd red light add up.
-        return time * 1.12 + Double(upcomingStops) * 6
+        let upcomingCorners = caps.filter { $0.distance > distance }.count
+        // Pulling away, traffic and the odd red light all add up.
+        return time * 1.06 + Double(upcomingStops) * 6 + Double(upcomingCorners) * 0.7
     }
 
     // MARK: - Corners
 
-    /// Finds corners from the route's shape and how fast each can be taken,
-    /// using the turn radius and a comfortable sideways acceleration.
+    /// Sideways acceleration a cap is built for. The car scales these at
+    /// runtime, so a keener driver carries more speed through the same bend.
+    static let referenceLateralAcceleration = 2.6
+    /// Bends that allow more than this are left out, so true straights carry
+    /// no entries at all and the car is free to run at the road's limit.
+    static let cornerSpeedCeiling: CLLocationSpeed = 36
+
+    /// A geometric speed ceiling along the route, from how tightly it bends.
+    /// Picks up long gentle curves as well as junction turns, which is what
+    /// keeps the car from holding one speed through a whole winding road.
     static func cornerCaps(for route: WalkRoute) -> [Cap] {
-        let window: CLLocationDistance = 10
-        let lateralAcceleration = 2.8
+        let window: CLLocationDistance = 12
         let total = route.totalDistance
         guard total > window * 2 else { return [] }
 
@@ -111,21 +122,21 @@ struct DriveProfile: Codable, Equatable {
             let here = route.point(atDistance: distance)
             let after = route.point(atDistance: distance + window)
             let turn = abs(angleBetween(bearing(from: before, to: here), bearing(from: here, to: after)))
-            if turn > 12 {
-                let radians = turn * .pi / 180
-                let radius = (window * 2) / radians
-                let speed = max(sqrt(lateralAcceleration * radius), 3)
-                if speed < 30 {
+            if turn > 3 {
+                let radius = (window * 2) / (turn * .pi / 180)
+                let speed = max((referenceLateralAcceleration * radius).squareRoot(), 3)
+                if speed < cornerSpeedCeiling {
                     raw.append(Cap(distance: distance, speed: speed))
                 }
             }
-            distance += 4
+            distance += 5
         }
 
-        // Keep only the slowest point of each corner.
+        // Thin out to the slowest point every 18 m, so a long sweeping bend
+        // keeps a sustained ceiling instead of collapsing to one point.
         var caps: [Cap] = []
         for cap in raw {
-            if let last = caps.last, cap.distance - last.distance < 25 {
+            if let last = caps.last, cap.distance - last.distance < 18 {
                 if cap.speed < last.speed {
                     caps[caps.count - 1] = cap
                 }

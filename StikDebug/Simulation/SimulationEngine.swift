@@ -45,6 +45,8 @@ struct DriveReadout: Equatable {
     var road: String?
     var waiting: CarModel.Waiting?
     var waitRemaining: TimeInterval
+    /// Slowed by traffic rather than by a sign or a bend.
+    var isHeldUp: Bool
 }
 
 /// What gets written to disk so an interrupted session can be resumed.
@@ -142,9 +144,9 @@ final class SimulationEngine: ObservableObject {
             && UserDefaults.standard.bool(forKey: UserDefaults.Keys.realisticDriving)
     }
 
-    static var drivingStyle: Double {
-        let style = UserDefaults.standard.double(forKey: UserDefaults.Keys.drivingStyle)
-        return style > 0 ? style : 1
+    /// How far over the posted limit the driver cruises, in m/s.
+    static var drivingOverspeed: CLLocationSpeed {
+        UserDefaults.standard.double(forKey: UserDefaults.Keys.drivingOverspeedKmh) / 3.6
     }
 
     var remainingTime: TimeInterval {
@@ -153,7 +155,7 @@ final class SimulationEngine: ObservableObject {
             return profile.estimatedTime(
                 from: distanceWalked,
                 totalDistance: route.totalDistance,
-                style: Self.drivingStyle,
+                overspeed: Self.drivingOverspeed,
                 fallbackSpeed: Self.speedMetersPerSecond
             )
         }
@@ -331,9 +333,10 @@ final class SimulationEngine: ObservableObject {
         let natural = UserDefaults.standard.bool(forKey: UserDefaults.Keys.naturalMovement)
         if Self.usesCarModel(for: route), let profile = route.driveProfile {
             let settings = CarModel.Settings(
-                style: Self.drivingStyle,
+                overspeed: Self.drivingOverspeed,
                 fallbackSpeed: Self.speedMetersPerSecond,
                 stopAtSignsAndLights: UserDefaults.standard.bool(forKey: UserDefaults.Keys.stopAtSignsAndLights),
+                trafficEvents: UserDefaults.standard.bool(forKey: UserDefaults.Keys.trafficEvents),
                 brakeForEnd: LoopMode.current != .loop,
                 natural: natural
             )
@@ -351,7 +354,8 @@ final class SimulationEngine: ObservableObject {
                 limitIsPosted: segment?.isPosted ?? false,
                 road: segment?.name,
                 waiting: car.waiting,
-                waitRemaining: car.waitRemaining
+                waitRemaining: car.waitRemaining,
+                isHeldUp: car.isHeldUp
             )
         } else {
             if natural {

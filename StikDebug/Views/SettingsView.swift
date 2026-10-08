@@ -20,6 +20,7 @@ struct SettingsView: View {
     @AppStorage(UserDefaults.Keys.naturalMovement) private var naturalMovement = true
     @AppStorage(UserDefaults.Keys.realisticDriving) private var realisticDriving = true
     @AppStorage(UserDefaults.Keys.stopAtSignsAndLights) private var stopAtSignsAndLights = true
+    @AppStorage(UserDefaults.Keys.trafficEvents) private var trafficEvents = true
     @AppStorage(UserDefaults.Keys.keepAliveAudio) private var keepAliveAudio = true
     @AppStorage(UserDefaults.Keys.keepAliveLocation) private var keepAliveLocation = true
     @AppStorage(UserDefaults.Keys.targetDeviceIP) private var targetDeviceIP = DeviceConnectionContext.defaultTargetIPAddress
@@ -94,6 +95,15 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Stop at Signs and Lights")
                             Text("Stops briefly at stop signs and sometimes waits at red lights.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(!realisticDriving)
+                    Toggle(isOn: $trafficEvents) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Traffic Hold-Ups")
+                            Text("Occasionally slows for a car turning, someone parking or highway bunching, then picks back up.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }

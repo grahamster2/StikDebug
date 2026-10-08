@@ -529,7 +529,7 @@ struct RouteSummary: View {
     @AppStorage(UserDefaults.Keys.walkingSpeedKmh) private var walkingSpeed = TravelMode.walk.defaultSpeedKmh
     @AppStorage(UserDefaults.Keys.cyclingSpeedKmh) private var cyclingSpeed = TravelMode.cycle.defaultSpeedKmh
     @AppStorage(UserDefaults.Keys.drivingSpeedKmh) private var drivingSpeed = TravelMode.drive.defaultSpeedKmh
-    @AppStorage(UserDefaults.Keys.drivingStyle) private var drivingStyle = 1.0
+    @AppStorage(UserDefaults.Keys.drivingOverspeedKmh) private var overspeedKmh = 8.0
     @AppStorage(UserDefaults.Keys.realisticDriving) private var realisticDriving = true
 
     var body: some View {
@@ -538,7 +538,7 @@ struct RouteSummary: View {
         let time = profile?.estimatedTime(
             from: 0,
             totalDistance: route.totalDistance,
-            style: drivingStyle,
+            overspeed: overspeedKmh / 3.6,
             fallbackSpeed: travel.speedMetersPerSecond
         ) ?? route.totalDistance / travel.speedMetersPerSecond
 
@@ -580,34 +580,34 @@ struct RouteSummary: View {
 }
 
 struct DriveStyleControl: View {
-    @AppStorage(UserDefaults.Keys.drivingStyle) private var style = 1.0
+    @AppStorage(UserDefaults.Keys.drivingOverspeedKmh) private var overspeedKmh = 8.0
+
+    // Roughly -5 to +10 mph, which is as far over as this stays believable.
+    private static let range: ClosedRange<Double> = -8...16
 
     var body: some View {
         VStack(spacing: 4) {
             HStack(spacing: 10) {
                 Image(systemName: "car.fill")
                     .frame(width: 28, height: 28)
-                Slider(value: $style, in: 0.85...1.15, step: 0.01)
-                Text(Self.label(style))
+                Slider(value: $overspeedKmh, in: Self.range, step: 1)
+                Text(Self.label(overspeedKmh))
                     .font(.subheadline.monospacedDigit())
-                    .frame(width: 76, alignment: .trailing)
+                    .frame(width: 86, alignment: .trailing)
             }
-            HStack {
-                Text("Relaxed")
-                Spacer()
-                Text("Follows each road's limit")
-                Spacer()
-                Text("Aggressive")
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
+            Text("Speed follows each road's limit, eases off through bends and picks back up on straights.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    static func label(_ style: Double) -> String {
-        let percent = Int(((style - 1) * 100).rounded())
-        if percent == 0 { return "At limit" }
-        return percent > 0 ? "+\(percent)%" : "\(percent)%"
+    static func label(_ kmh: Double) -> String {
+        let us = Locale.current.measurementSystem == .us
+        let value = (us ? kmh / 1.609344 : kmh).rounded()
+        let unit = us ? "mph" : "km/h"
+        if value == 0 { return "At limit" }
+        return value > 0 ? "+\(Int(value)) \(unit)" : "\(Int(value)) \(unit)"
     }
 }
 
@@ -640,6 +640,10 @@ struct DriveReadoutView: View {
                     )
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.red)
+                } else if readout.isHeldUp {
+                    Label("Traffic", systemImage: "car.2.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
                 } else if readout.limit != nil {
                     Text(readout.limitIsPosted ? "Posted limit" : "Typical speed for this road")
                         .font(.caption)

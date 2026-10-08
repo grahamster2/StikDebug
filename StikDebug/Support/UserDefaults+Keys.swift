@@ -17,7 +17,9 @@ extension UserDefaults {
         static let useRouteSpeedEstimate = "useRouteSpeedEstimate"
         static let realisticDriving = "realisticDriving"
         static let stopAtSignsAndLights = "stopAtSignsAndLights"
-        static let drivingStyle = "drivingStyle"
+        /// How far over the posted limit the driver cruises, in km/h.
+        static let drivingOverspeedKmh = "drivingOverspeedKmh"
+        static let trafficEvents = "trafficEvents"
         static let naturalMovement = "naturalMovement"
         static let loopMode = "loopMode"
         static let followPaths = "followPaths"

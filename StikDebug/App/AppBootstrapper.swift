@@ -23,7 +23,8 @@ enum AppBootstrapper {
             UserDefaults.Keys.useRouteSpeedEstimate: true,
             UserDefaults.Keys.realisticDriving: true,
             UserDefaults.Keys.stopAtSignsAndLights: true,
-            UserDefaults.Keys.drivingStyle: 1.0,
+            UserDefaults.Keys.drivingOverspeedKmh: 8.0,
+            UserDefaults.Keys.trafficEvents: true,
             UserDefaults.Keys.naturalMovement: true,
             UserDefaults.Keys.followPaths: true
         ])
